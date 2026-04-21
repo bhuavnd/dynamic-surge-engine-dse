@@ -2,6 +2,7 @@ import time
 import uuid
 import sys
 import os
+import traceback
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
@@ -22,28 +23,42 @@ def run_driver_simulator():
     print("[INFO] Driver simulator started...")
 
     while True:
-        for driver_id in drivers:
-            lat = drivers[driver_id]["lat"]
-            lon = drivers[driver_id]["lon"]
+        try:
+            for driver_id in drivers:
+                lat = drivers[driver_id]["lat"]
+                lon = drivers[driver_id]["lon"]
 
-            lat, lon = move_driver(lat, lon)
-            zone = get_zone(lat, lon)
+                try:
+                    lat, lon = move_driver(lat, lon)
+                except:
+                    lat, lon = generate_random_location()
 
-            drivers[driver_id]["lat"] = lat
-            drivers[driver_id]["lon"] = lon
+                zone = get_zone(lat, lon)
 
-            redis_client.hset(
-                f"driver:{driver_id}",
-                mapping={
-                    "lat": lat,
-                    "lon": lon,
-                    "zone": zone,
-                    "timestamp": time.time()
-                }
-            )
-            redis_client.expire(f"driver:{driver_id}", 60)
+                drivers[driver_id]["lat"] = lat
+                drivers[driver_id]["lon"] = lon
 
-        time.sleep(2)
+                key = f"driver:{driver_id}"
+
+                redis_client.hset(
+                    key,
+                    mapping={
+                        "lat": lat,
+                        "lon": lon,
+                        "zone": zone,
+                        "timestamp": time.time()
+                    }
+                )
+
+                redis_client.expire(key, 120)
+
+            print("[INFO] Drivers updated")
+            time.sleep(2)
+
+        except Exception as e:
+            print("[ERROR] Driver simulator crashed:", e)
+            traceback.print_exc()
+            time.sleep(3)
 
 
 if __name__ == "__main__":
