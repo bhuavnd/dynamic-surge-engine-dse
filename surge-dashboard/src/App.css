@@ -2,14 +2,21 @@
   box-sizing: border-box;
 }
 
-body {
+html,
+body,
+#root {
   margin: 0;
+  min-height: 100%;
+  width: 100%;
+}
+
+body {
   font-family: Inter, Poppins, system-ui, sans-serif;
   background: radial-gradient(circle at top left, #111827, #020617 55%);
   color: #fff;
 }
 
-body::befo   {
+body::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -17,13 +24,15 @@ body::befo   {
     radial-gradient(circle at 20% 20%, rgba(0,255,208,0.08), transparent 30%),
     radial-gradient(circle at 80% 40%, rgba(124,58,237,0.08), transparent 30%);
   pointer-events: none;
+  z-index: -1;
 }
 
 .app-shell {
   padding: 24px;
+  max-width: 1800px;
+  margin: 0 auto;
 }
 
-/* Shared Glass */
 .glass {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.07);
@@ -32,19 +41,19 @@ body::befo   {
   box-shadow: 0 12px 35px rgba(0,0,0,0.35);
 }
 
-/* Header */
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   padding: 18px 22px;
+  flex-wrap: wrap;
 }
 
 .brand {
   font-size: 28px;
   font-weight: 800;
   background: linear-gradient(90deg, #00ffd0, #7c3aed);
-  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -59,6 +68,7 @@ body::befo   {
   align-items: center;
   gap: 14px;
   color: #cbd5e1;
+  flex-wrap: wrap;
 }
 
 .live-dot {
@@ -73,7 +83,6 @@ body::befo   {
   font-weight: 700;
 }
 
-/* KPI */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -89,6 +98,7 @@ body::befo   {
   display: flex;
   gap: 8px;
   color: #cbd5e1;
+  align-items: center;
 }
 
 .kpi-value {
@@ -97,7 +107,6 @@ body::befo   {
   font-weight: 800;
 }
 
-/* Main */
 .main-grid {
   display: grid;
   grid-template-columns: 1.45fr 1fr;
@@ -115,6 +124,7 @@ body::befo   {
 
 .panel {
   padding: 16px;
+  overflow: hidden;
 }
 
 .panel-title {
@@ -123,29 +133,31 @@ body::befo   {
   font-size: 22px;
 }
 
-/* Map */
 .map-frame {
   width: 100%;
   height: 420px;
   border: none;
   border-radius: 14px;
+  background: #0f172a;
 }
 
-/* Charts */
 .chart-wrap {
   width: 100%;
-  height: 280px;
+  height: 320px;
+  min-height: 320px;
+  position: relative;
 }
 
 .chart-wrap.tall {
-  height: 320px;
+  height: 360px;
+  min-height: 360px;
 }
 
-.chart-wrap.small {
-  height: 240px;
+.recharts-responsive-container {
+  width: 100% !important;
+  height: 100% !important;
 }
 
-/* Buttons */
 .control-row {
   display: grid;
   gap: 12px;
@@ -163,7 +175,7 @@ body::befo   {
   gap: 8px;
   cursor: pointer;
   font-weight: 700;
-  transition: 0.25s;
+  transition: 0.25s ease;
 }
 
 .btn:hover {
@@ -182,7 +194,6 @@ body::befo   {
   background: #ec4899;
 }
 
-/* Badges */
 .mini-wrap {
   display: flex;
   gap: 10px;
@@ -204,7 +215,6 @@ body::befo   {
   border: 1px solid rgba(236,72,153,0.4);
 }
 
-/* Alerts */
 .alerts-wrap {
   display: flex;
   flex-direction: column;
@@ -241,24 +251,10 @@ body::befo   {
   border: 1px solid rgba(59,130,246,0.35);
 }
 
-/* Health */
-.health-text {
-  text-align: center;
-  margin-top: -8px;
-  font-size: 24px;
-  font-weight: 800;
-  color: #00ffd0;
-}
-
-/* Zones */
-.zones-section {
-  margin-top: 18px;
-}
-
 .section-head {
   font-size: 28px;
   font-weight: 800;
-  margin-bottom: 16px;
+  margin: 18px 0 16px;
 }
 
 .zones-grid {
@@ -274,6 +270,7 @@ body::befo   {
 .zone-top {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   font-weight: 800;
 }
 
@@ -295,6 +292,7 @@ body::befo   {
   margin-top: 12px;
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   color: #94a3b8;
   font-size: 14px;
 }
@@ -310,9 +308,25 @@ body::befo   {
   box-shadow: 0 0 18px rgba(255,0,90,0.18);
 }
 
-/* Responsive */
+.empty-state {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+}
+
 @media (max-width: 1000px) {
   .main-grid {
     grid-template-columns: 1fr;
+  }
+
+  .chart-wrap,
+  .chart-wrap.tall {
+    height: 300px;
+    min-height: 300px;
+  }
+
+  .map-frame {
+    height: 340px;
   }
 }
