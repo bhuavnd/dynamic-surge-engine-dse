@@ -3,10 +3,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from simulator.redis_client import redis_client
 from simulator.geofence import get_zone
 from ml.scenario_state import state
-from typing import Dict, Any, List
 import h3
+import subprocess
+import sys
+import os
 
 app = FastAPI()
+
+# ---------------------------------
+# AUTO START SIMULATORS ON BOOT
+# ---------------------------------
+def run_script(path):
+    try:
+        subprocess.Popen([sys.executable, path])
+        print(f"[STARTED] {os.path.basename(path)}")
+    except Exception as e:
+        print(f"[ERROR] Failed to start {path}: {e}")
+
+@app.on_event("startup")
+def startup_jobs():
+    base = os.path.dirname(os.path.abspath(__file__))
+
+    run_script(os.path.join(base, "simulator", "driver_simulator.py"))
+    run_script(os.path.join(base, "simulator", "rider_simulator.py"))
+    run_script(os.path.join(base, "surge_engine.py"))
 
 # ---------------------------------
 # CORS
@@ -27,7 +47,7 @@ def root():
     return {"message": "Dynamic Surge API Running 🚀"}
 
 # ---------------------------------
-# DEEP BANGALORE LOCALITY MAP
+# LOCALITIES
 # ---------------------------------
 LOCALITIES = [
     ("MG Road", 12.9756, 77.6050),
@@ -53,7 +73,6 @@ def distance(lat1, lon1, lat2, lon2):
 def get_area_name(zone: str):
     try:
         lat, lon = h3.cell_to_latlng(zone)
-
         best_name = "Unknown Area"
         best_dist = float("inf")
 
@@ -64,12 +83,11 @@ def get_area_name(zone: str):
                 best_name = name
 
         return best_name
-
-    except Exception:
+    except:
         return "Unknown Area"
 
 # ---------------------------------
-# SCENARIO CONTROL
+# SCENARIO
 # ---------------------------------
 @app.get("/scenario")
 def get_scenario():
@@ -79,17 +97,13 @@ def get_scenario():
 def update_scenario(data: dict = Body(...)):
     state["rain"] = int(data.get("rain", 0))
     state["event"] = int(data.get("event", 0))
-    return {
-        "message": "Scenario Updated",
-        "state": state
-    }
+    return {"message": "Scenario Updated", "state": state}
 
 # ---------------------------------
-# SINGLE SURGE BY LAT/LON
+# SURGE SINGLE
 # ---------------------------------
 @app.get("/surge")
 def get_surge(lat: float, lon: float):
-
     zone = get_zone(lat, lon)
     raw = redis_client.hgetall(f"surge:{zone}")
 
@@ -109,25 +123,24 @@ def get_surge(lat: float, lon: float):
         "area": get_area_name(zone),
         "drivers": int(raw.get("drivers", 0)),
         "riders": int(raw.get("riders", 0)),
-        "rule_surge": float(raw.get("rule_surge", 1.0)),
-        "ml_surge": float(raw.get("ml_surge", 1.0)),
-        "surge_multiplier": float(raw.get("surge_multiplier", 1.0))
+        "rule_surge": float(raw.get("rule_surge", 1)),
+        "ml_surge": float(raw.get("ml_surge", 1)),
+        "surge_multiplier": float(raw.get("surge_multiplier", 1))
     }
 
 # ---------------------------------
-# GROUPED SURGE REGIONS (ONE CARD PER AREA)
+# SURGE ALL
 # ---------------------------------
 @app.get("/surge/all")
 def get_all_surges():
-
     keys = list(redis_client.scan_iter("surge:*"))
     grouped = {}
 
     for key in keys:
-        key_str = key.decode() if isinstance(key, bytes) else key
-        zone = key_str.split(":")[1]
+        key = key.decode() if isinstance(key, bytes) else key
+        zone = key.split(":")[1]
+        raw = redis_client.hgetall(key)
 
-        raw = redis_client.hgetall(key_str)
         if not raw:
             continue
 
@@ -138,9 +151,9 @@ def get_all_surges():
                 "count": 0,
                 "drivers": 0,
                 "riders": 0,
-                "rule_surge": 0.0,
-                "ml_surge": 0.0,
-                "surge_multiplier": 0.0,
+                "rule_surge": 0,
+                "ml_surge": 0,
+                "surge_multiplier": 0,
                 "polygon": []
             }
 
@@ -149,9 +162,9 @@ def get_all_surges():
         grouped[area]["count"] += 1
         grouped[area]["drivers"] += int(raw.get("drivers", 0))
         grouped[area]["riders"] += int(raw.get("riders", 0))
-        grouped[area]["rule_surge"] += float(raw.get("rule_surge", 1.0))
-        grouped[area]["ml_surge"] += float(raw.get("ml_surge", 1.0))
-        grouped[area]["surge_multiplier"] += float(raw.get("surge_multiplier", 1.0))
+        grouped[area]["rule_surge"] += float(raw.get("rule_surge", 1))
+        grouped[area]["ml_surge"] += float(raw.get("ml_surge", 1))
+        grouped[area]["surge_multiplier"] += float(raw.get("surge_multiplier", 1))
         grouped[area]["polygon"].append([[lat, lon] for lat, lon in boundary])
 
     results = []
@@ -173,11 +186,10 @@ def get_all_surges():
     return results
 
 # ---------------------------------
-# LIVE DRIVERS
+# DRIVERS
 # ---------------------------------
 @app.get("/drivers")
 def get_drivers():
-
     drivers = []
     keys = list(redis_client.scan_iter("driver:*"))
 
