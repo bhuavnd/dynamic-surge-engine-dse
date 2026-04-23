@@ -1,40 +1,16 @@
 from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
-from simulator.redis_client import redis_client
-from simulator.geofence import get_zone
-from ml.scenario_state import state
-import h3
-import subprocess
-import sys
-import os
 import threading
+import h3
 
+from simulator.redis_client import redis_client
 from simulator.driver_simulator import run_driver_simulator
 from simulator.rider_simulator import run_rider_simulator
 from surge_engine import run as run_surge_engine
+from ml.scenario_state import state
 
 app = FastAPI()
 
-# ---------------------------------
-# AUTO START SIMULATORS ON BOOT
-# ---------------------------------
-def run_script(path):
-    try:
-        subprocess.Popen([sys.executable, path])
-        print(f"[STARTED] {os.path.basename(path)}")
-    except Exception as e:
-        print(f"[ERROR] Failed to start {path}: {e}")
-
-@app.on_event("startup")
-def startup_jobs():
-    threading.Thread(target=run_driver_simulator, daemon=True).start()
-    threading.Thread(target=run_rider_simulator, daemon=True).start()
-    threading.Thread(target=run_surge_engine, daemon=True).start()
-    print("[OK] All background jobs started")
-
-# ---------------------------------
-# CORS
-# ---------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,155 +19,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------
-# ROOT
-# ---------------------------------
+
+@app.on_event("startup")
+def startup_jobs():
+    threading.Thread(target=run_driver_simulator, daemon=True).start()
+    threading.Thread(target=run_rider_simulator, daemon=True).start()
+    threading.Thread(target=run_surge_engine, daemon=True).start()
+    print("[OK] All background jobs started")
+
+
 @app.get("/")
 def root():
-    return {"message": "Dynamic Surge API Running 🚀"}
+    return {"message": "Dynamic Surge API Running"}
 
-# ---------------------------------
-# LOCALITIES
-# ---------------------------------
-LOCALITIES = [
-    ("MG Road", 12.9756, 77.6050),
-    ("Indiranagar", 12.9784, 77.6408),
-    ("Koramangala", 12.9352, 77.6245),
-    ("Whitefield", 12.9698, 77.7500),
-    ("Electronic City", 12.8399, 77.6770),
-    ("Jayanagar", 12.9293, 77.5828),
-    ("Hebbal", 13.0358, 77.5970),
-    ("Yelahanka", 13.1007, 77.5963),
-    ("Marathahalli", 12.9591, 77.6974),
-    ("HSR Layout", 12.9116, 77.6474),
-    ("BTM Layout", 12.9166, 77.6101),
-    ("Banashankari", 12.9255, 77.5468),
-    ("Rajajinagar", 12.9915, 77.5544),
-    ("Malleshwaram", 13.0035, 77.5706),
-    ("Airport Zone", 13.1986, 77.7066),
-]
 
-def distance(lat1, lon1, lat2, lon2):
-    return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
-
-def get_area_name(zone: str):
-    try:
-        lat, lon = h3.cell_to_latlng(zone)
-        best_name = "Unknown Area"
-        best_dist = float("inf")
-
-        for name, a_lat, a_lon in LOCALITIES:
-            d = distance(lat, lon, a_lat, a_lon)
-            if d < best_dist:
-                best_dist = d
-                best_name = name
-
-        return best_name
-    except:
-        return "Unknown Area"
-
-# ---------------------------------
-# SCENARIO
-# ---------------------------------
-@app.get("/scenario")
-def get_scenario():
-    return state
-
-@app.post("/scenario")
-def update_scenario(data: dict = Body(...)):
-    state["rain"] = int(data.get("rain", 0))
-    state["event"] = int(data.get("event", 0))
-    return {"message": "Scenario Updated", "state": state}
-
-# ---------------------------------
-# SURGE SINGLE
-# ---------------------------------
-@app.get("/surge")
-def get_surge(lat: float, lon: float):
-    zone = get_zone(lat, lon)
-    raw = redis_client.hgetall(f"surge:{zone}")
-
-    if not raw:
-        return {
-            "zone": zone,
-            "area": get_area_name(zone),
-            "drivers": 0,
-            "riders": 0,
-            "rule_surge": 1.0,
-            "ml_surge": 1.0,
-            "surge_multiplier": 1.0
-        }
-
-    return {
-        "zone": zone,
-        "area": get_area_name(zone),
-        "drivers": int(raw.get("drivers", 0)),
-        "riders": int(raw.get("riders", 0)),
-        "rule_surge": float(raw.get("rule_surge", 1)),
-        "ml_surge": float(raw.get("ml_surge", 1)),
-        "surge_multiplier": float(raw.get("surge_multiplier", 1))
-    }
-
-# ---------------------------------
-# SURGE ALL
-# ---------------------------------
-@app.get("/surge/all")
-def get_all_surges():
-    keys = list(redis_client.scan_iter("surge:*"))
-    grouped = {}
-
-    for key in keys:
-        key = key.decode() if isinstance(key, bytes) else key
-        zone = key.split(":")[1]
-        raw = redis_client.hgetall(key)
-
-        if not raw:
-            continue
-
-        area = get_area_name(zone)
-
-        if area not in grouped:
-            grouped[area] = {
-                "count": 0,
-                "drivers": 0,
-                "riders": 0,
-                "rule_surge": 0,
-                "ml_surge": 0,
-                "surge_multiplier": 0,
-                "polygon": []
-            }
-
-        boundary = h3.cell_to_boundary(zone)
-
-        grouped[area]["count"] += 1
-        grouped[area]["drivers"] += int(raw.get("drivers", 0))
-        grouped[area]["riders"] += int(raw.get("riders", 0))
-        grouped[area]["rule_surge"] += float(raw.get("rule_surge", 1))
-        grouped[area]["ml_surge"] += float(raw.get("ml_surge", 1))
-        grouped[area]["surge_multiplier"] += float(raw.get("surge_multiplier", 1))
-        grouped[area]["polygon"].append([[lat, lon] for lat, lon in boundary])
-
-    results = []
-
-    for area, data in grouped.items():
-        c = data["count"]
-
-        results.append({
-            "region_id": area,
-            "area": area,
-            "drivers": data["drivers"],
-            "riders": data["riders"],
-            "rule_surge": round(data["rule_surge"] / c, 2),
-            "ml_surge": round(data["ml_surge"] / c, 2),
-            "surge_multiplier": round(data["surge_multiplier"] / c, 2),
-            "polygons": data["polygon"]
-        })
-
-    return results
-
-# ---------------------------------
-# DRIVERS
-# ---------------------------------
 @app.get("/drivers")
 def get_drivers():
     drivers = []
@@ -199,13 +40,75 @@ def get_drivers():
 
     for key in keys:
         raw = redis_client.hgetall(key)
+        if raw:
+            drivers.append({
+                "lat": float(raw.get("lat", 0)),
+                "lon": float(raw.get("lon", 0)),
+                "zone": raw.get("zone")
+            })
+
+    return drivers
+
+
+@app.get("/riders")
+def get_riders():
+    riders = []
+    keys = list(redis_client.scan_iter("rider:*"))
+
+    for key in keys:
+        raw = redis_client.hgetall(key)
+        if raw:
+            riders.append({
+                "lat": float(raw.get("lat", 0)),
+                "lon": float(raw.get("lon", 0)),
+                "zone": raw.get("zone")
+            })
+
+    return riders
+
+
+@app.get("/surge")
+def get_surge(zone: str):
+    raw = redis_client.hgetall(f"surge:{zone}")
+    return raw if raw else {"error": "Zone not found"}
+
+
+@app.get("/surge/all")
+def get_all_surge():
+    zones = []
+    keys = list(redis_client.scan_iter("surge:*"))
+
+    for key in keys:
+        raw = redis_client.hgetall(key)
         if not raw:
             continue
 
-        drivers.append({
-            "lat": float(raw.get("lat", 0)),
-            "lon": float(raw.get("lon", 0)),
-            "zone": raw.get("zone")
+        zone = key.split("surge:")[1]
+
+        boundary = h3.cell_to_boundary(zone)
+        polygon = [[lat, lon] for lat, lon in boundary]
+
+        zones.append({
+            "area": zone[:8],
+            "zone": zone,
+            "drivers": int(float(raw.get("drivers", 0))),
+            "riders": int(float(raw.get("riders", 0))),
+            "rule_surge": float(raw.get("rule_surge", 1)),
+            "ml_surge": float(raw.get("ml_surge", 1)),
+            "surge_multiplier": float(raw.get("surge_multiplier", 1)),
+            "polygons": [polygon]
         })
 
-    return drivers
+    return zones
+
+
+@app.get("/scenario")
+def get_scenario():
+    return state
+
+
+@app.post("/scenario")
+def update_scenario(payload: dict = Body(...)):
+    state["rain"] = int(payload.get("rain", 0))
+    state["event"] = int(payload.get("event", 0))
+    return {"message": "updated", "state": state}

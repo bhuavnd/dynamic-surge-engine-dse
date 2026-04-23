@@ -1,10 +1,11 @@
 import time
 import sys
+import random
 
 from simulator.redis_client import redis_client
 from ml.predictor import predict_surge, rule_based_surge
 
-SURGE_INTERVAL = 8
+SURGE_INTERVAL = 4
 
 
 def fetch_entities(prefix):
@@ -29,12 +30,19 @@ def calculate_surge(drivers, riders, zone):
     rule = rule_based_surge(drivers, riders)
     ml = predict_surge(drivers, riders, zone)
 
-    final = (0.7 * rule) + (0.3 * ml)
+    final = (0.65 * rule) + (0.35 * ml)
+
+    # demand boost for demo visibility
+    if riders > drivers:
+        final += min((riders - drivers) * 0.08, 1.2)
+
+    # hotspot randomness for realism
+    final += random.uniform(-0.05, 0.15)
 
     prev = redis_client.hget(f"surge:{zone}", "surge_multiplier")
     if prev:
         try:
-            final = (0.7 * float(prev)) + (0.3 * final)
+            final = (0.55 * float(prev)) + (0.45 * final)
         except:
             pass
 
@@ -43,7 +51,7 @@ def calculate_surge(drivers, riders, zone):
 
 
 def run():
-    print("[INFO] Surge engine started...")
+    print("[INFO] Final Surge Engine started...")
 
     try:
         while True:
@@ -69,6 +77,7 @@ def run():
                         "timestamp": time.time()
                     }
                 )
+
                 redis_client.expire(f"surge:{zone}", 120)
 
             time.sleep(SURGE_INTERVAL)
