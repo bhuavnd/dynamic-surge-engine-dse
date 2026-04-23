@@ -57,6 +57,7 @@ def get_riders():
 
     for key in keys:
         raw = redis_client.hgetall(key)
+
         if raw:
             riders.append({
                 "lat": float(raw.get("lat", 0)),
