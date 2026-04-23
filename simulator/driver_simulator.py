@@ -15,7 +15,8 @@ from simulator.redis_client import redis_client
 def run_driver_simulator():
     drivers = {}
 
-    for _ in range(300):
+    # reduced from 300
+    for _ in range(120):
         driver_id = str(uuid.uuid4())
         lat, lon = generate_random_location()
         drivers[driver_id] = {"lat": lat, "lon": lon}
@@ -28,20 +29,14 @@ def run_driver_simulator():
                 lat = drivers[driver_id]["lat"]
                 lon = drivers[driver_id]["lon"]
 
-                try:
-                    lat, lon = move_driver(lat, lon)
-                except:
-                    lat, lon = generate_random_location()
-
+                lat, lon = move_driver(lat, lon)
                 zone = get_zone(lat, lon)
 
                 drivers[driver_id]["lat"] = lat
                 drivers[driver_id]["lon"] = lon
 
-                key = f"driver:{driver_id}"
-
                 redis_client.hset(
-                    key,
+                    f"driver:{driver_id}",
                     mapping={
                         "lat": lat,
                         "lon": lon,
@@ -50,15 +45,14 @@ def run_driver_simulator():
                     }
                 )
 
-                redis_client.expire(key, 120)
+                redis_client.expire(f"driver:{driver_id}", 120)
 
-            print("[INFO] Drivers updated")
             time.sleep(2)
 
         except Exception as e:
-            print("[ERROR] Driver simulator crashed:", e)
+            print("[ERROR]", e)
             traceback.print_exc()
-            time.sleep(3)
+            time.sleep(2)
 
 
 if __name__ == "__main__":

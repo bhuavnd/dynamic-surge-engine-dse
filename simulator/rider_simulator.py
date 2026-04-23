@@ -2,6 +2,7 @@ import time
 import uuid
 import sys
 import os
+import random
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
@@ -15,22 +16,26 @@ def run_rider_simulator():
     print("[INFO] Rider simulator started...")
 
     while True:
-        rider_id = str(uuid.uuid4())
-        lat, lon = generate_random_location()
-        zone = get_zone(lat, lon)
+        burst = random.randint(2, 5)
 
-        redis_client.hset(
-            f"rider:{rider_id}",
-            mapping={
-                "lat": lat,
-                "lon": lon,
-                "zone": zone,
-                "timestamp": time.time()
-            }
-        )
-        redis_client.expire(f"rider:{rider_id}", 120)
+        for _ in range(burst):
+            rider_id = str(uuid.uuid4())
+            lat, lon = generate_random_location()
+            zone = get_zone(lat, lon)
 
-        time.sleep(3)
+            redis_client.hset(
+                f"rider:{rider_id}",
+                mapping={
+                    "lat": lat,
+                    "lon": lon,
+                    "zone": zone,
+                    "timestamp": time.time()
+                }
+            )
+
+            redis_client.expire(f"rider:{rider_id}", 90)
+
+        time.sleep(1)
 
 
 if __name__ == "__main__":
